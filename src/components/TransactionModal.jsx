@@ -258,8 +258,9 @@ export default function TransactionModal({ onClose, onAdd, onAddSubscription, cr
                 </motion.div>
               )}
             </div>
-            </div>
           )}
+        </div>
+      )}
 
           <button 
             type="submit"
