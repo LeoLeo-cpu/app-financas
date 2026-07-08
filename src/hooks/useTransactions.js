@@ -5,6 +5,7 @@ import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, order
 export function useTransactions() {
   const [transactions, setTransactions] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
+  const [creditCards, setCreditCards] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Ouve as transações em tempo real
@@ -42,12 +43,61 @@ export function useTransactions() {
     return () => unsubscribe();
   }, []);
 
+  // Ouve os cartões de crédito
+  useEffect(() => {
+    const q = query(collection(db, 'credit_cards'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setCreditCards(data);
+    }, (error) => {
+      console.error("Erro ao carregar cartões:", error);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const addTransaction = async (transaction) => {
     try {
-      await addDoc(collection(db, 'transactions'), {
-        ...transaction,
-        date: new Date().toISOString()
-      });
+      if (transaction.creditCardId && transaction.type === 'expense') {
+        const card = creditCards.find(c => c.id === transaction.creditCardId);
+        if (!card) throw new Error("Card not found");
+
+        const installments = parseInt(transaction.installments) || 1;
+        const amountPerInstallment = transaction.amount / installments;
+        
+        const now = new Date();
+        const purchaseDay = now.getDate();
+        
+        let startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        if (purchaseDay >= card.closingDay) {
+           startMonth.setMonth(startMonth.getMonth() + 1);
+        }
+
+        for (let i = 0; i < installments; i++) {
+           const invoiceDate = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, card.dueDay);
+           invoiceDate.setHours(12, 0, 0, 0); // Evitar problemas de fuso
+           
+           await addDoc(collection(db, 'transactions'), {
+              type: 'expense',
+              amount: amountPerInstallment,
+              category: transaction.category,
+              description: installments > 1 ? `${transaction.description} (${i+1}/${installments})` : transaction.description,
+              date: invoiceDate.toISOString(),
+              paymentMethod: 'credit_card',
+              cardId: card.id,
+              cardName: card.name
+           });
+        }
+      } else {
+        await addDoc(collection(db, 'transactions'), {
+          ...transaction,
+          date: new Date().toISOString()
+        });
+      }
     } catch (e) {
       console.error("Error adding document: ", e);
     }
@@ -70,6 +120,17 @@ export function useTransactions() {
       });
     } catch (e) {
       console.error("Error adding subscription: ", e);
+    }
+  };
+
+  const addCreditCard = async (cardData) => {
+    try {
+      await addDoc(collection(db, 'credit_cards'), {
+        ...cardData,
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error("Error adding credit card: ", e);
     }
   };
 
@@ -96,6 +157,7 @@ export function useTransactions() {
   };
 
   const getBalance = () => {
+    // "Todos os Tempos"
     return transactions.reduce((acc, curr) => {
       if (curr.type === 'income') return acc + curr.amount;
       if (curr.type === 'expense') return acc - curr.amount;
@@ -103,20 +165,20 @@ export function useTransactions() {
     }, 0);
   };
 
-  const getIncome = () => {
+  const getIncome = (selectedMonth) => {
     return transactions
-      .filter(t => t.type === 'income')
+      .filter(t => t.type === 'income' && (!selectedMonth || t.date.startsWith(selectedMonth)))
       .reduce((acc, curr) => acc + curr.amount, 0);
   };
 
-  const getExpense = () => {
+  const getExpense = (selectedMonth) => {
     return transactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && (!selectedMonth || t.date.startsWith(selectedMonth)))
       .reduce((acc, curr) => acc + curr.amount, 0);
   };
   
-  const getExpensesByCategory = () => {
-    const expenses = transactions.filter(t => t.type === 'expense');
+  const getExpensesByCategory = (selectedMonth) => {
+    const expenses = transactions.filter(t => t.type === 'expense' && (!selectedMonth || t.date.startsWith(selectedMonth)));
     const grouped = expenses.reduce((acc, curr) => {
         acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
         return acc;
@@ -144,11 +206,13 @@ export function useTransactions() {
   return {
     transactions,
     subscriptions,
+    creditCards,
     loading,
     addTransaction,
     deleteTransaction,
     addSubscription,
     approveSubscription,
+    addCreditCard,
     getPendingSubscriptions,
     getBalance,
     getIncome,

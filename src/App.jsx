@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTransactions } from './hooks/useTransactions';
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, History, PieChart, Home, Trash2, Settings, Download } from 'lucide-react';
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, History, PieChart, Home, Trash2, Settings, Download, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
@@ -11,11 +11,13 @@ const COLORS = ['#8B5CF6', '#10B981', '#F43F5E', '#F59E0B', '#3B82F6', '#EC4899'
 function App() {
   const { 
     transactions,
+    creditCards,
     loading,
     addTransaction, 
     deleteTransaction,
     addSubscription,
     approveSubscription,
+    addCreditCard,
     getPendingSubscriptions,
     getBalance, 
     getIncome, 
@@ -25,6 +27,14 @@ function App() {
 
   const [activeTab, setActiveTab] = useState('home');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  const currentMonthISO = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthISO);
+  
+  const [newCardName, setNewCardName] = useState('');
+  const [newCardClosing, setNewCardClosing] = useState(1);
+  const [newCardDue, setNewCardDue] = useState(10);
+  const [isAddingCard, setIsAddingCard] = useState(false);
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -57,14 +67,46 @@ function App() {
     document.body.removeChild(link);
   };
 
+    document.body.removeChild(link);
+  };
+
+  const handlePrevMonth = () => {
+    const d = new Date(selectedMonth + "-01T00:00:00");
+    d.setMonth(d.getMonth() - 1);
+    setSelectedMonth(d.toISOString().slice(0, 7));
+  };
+
+  const handleNextMonth = () => {
+    const d = new Date(selectedMonth + "-01T00:00:00");
+    d.setMonth(d.getMonth() + 1);
+    setSelectedMonth(d.toISOString().slice(0, 7));
+  };
+
+  const getMonthName = (isoMonth) => {
+    const d = new Date(isoMonth + "-01T00:00:00");
+    return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  };
+
+  const handleAddCard = (e) => {
+    e.preventDefault();
+    if(!newCardName) return;
+    addCreditCard({
+      name: newCardName,
+      closingDay: parseInt(newCardClosing),
+      dueDay: parseInt(newCardDue)
+    });
+    setNewCardName('');
+    setIsAddingCard(false);
+  };
+
   if (loading) {
     return <div className="flex-center" style={{ height: '100vh', color: 'var(--text-secondary)' }}>Carregando dados da nuvem...</div>;
   }
 
-  const balance = getBalance();
-  const income = getIncome();
-  const expense = getExpense();
-  const expensesByCategory = getExpensesByCategory();
+  const balance = getBalance(); // All time
+  const income = getIncome(selectedMonth); // Selected month
+  const expense = getExpense(selectedMonth); // Selected month
+  const expensesByCategory = getExpensesByCategory(selectedMonth); // Selected month
   const pendingSubs = getPendingSubscriptions();
 
   return (
@@ -80,8 +122,15 @@ function App() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Bem-vindo de volta,</p>
           <h2 style={{ fontSize: '1.5rem' }}>Leonardo 👋</h2>
         </div>
-        <div className="glass-panel flex-center" style={{ width: '45px', height: '45px', borderRadius: '50%' }}>
-          <Wallet color="var(--accent-primary)" />
+        <div className="flex-center" style={{ gap: '15px' }}>
+          <div className="glass-panel flex-between" style={{ padding: '8px 12px', borderRadius: '20px', gap: '10px' }}>
+            <button onClick={handlePrevMonth} style={{ background: 'transparent', color: 'var(--text-secondary)' }}><ChevronLeft size={18} /></button>
+            <span style={{ fontSize: '0.85rem', fontWeight: '600', textTransform: 'capitalize' }}>{getMonthName(selectedMonth)}</span>
+            <button onClick={handleNextMonth} style={{ background: 'transparent', color: 'var(--text-secondary)' }}><ChevronRight size={18} /></button>
+          </div>
+          <div className="glass-panel flex-center" style={{ width: '45px', height: '45px', borderRadius: '50%' }}>
+            <Wallet color="var(--accent-primary)" />
+          </div>
         </div>
       </motion.div>
 
@@ -163,7 +212,7 @@ function App() {
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                {transactions.slice(0, 5).map((t, index) => (
+                {transactions.filter(t => t.date.startsWith(selectedMonth)).slice(0, 5).map((t, index) => (
                   <motion.div 
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -250,9 +299,9 @@ function App() {
 
           {activeTab === 'history' && (
             <div>
-              <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Histórico Completo</h3>
+              <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Histórico do Mês</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                {transactions.map((t) => (
+                {transactions.filter(t => t.date.startsWith(selectedMonth)).map((t) => (
                   <div key={t.id} className="glass-panel flex-between" style={{ padding: '15px', borderRadius: '16px' }}>
                     <div className="flex-center" style={{ gap: '15px' }}>
                       <div className="flex-center" style={{ background: t.type === 'income' ? 'var(--success-bg)' : 'var(--danger-bg)', width: '45px', height: '45px', borderRadius: '14px' }}>
@@ -275,6 +324,77 @@ function App() {
                 ))}
                 {transactions.length === 0 && (
                   <div style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Sem histórico na nuvem.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'cards' && (
+            <div>
+              <div className="flex-between" style={{ marginBottom: '20px' }}>
+                <h3 style={{ fontSize: '1.2rem' }}>Meus Cartões</h3>
+                <button 
+                  onClick={() => setIsAddingCard(!isAddingCard)}
+                  style={{ background: 'var(--accent-primary)', color: 'white', padding: '6px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 'bold' }}
+                >
+                  + Novo Cartão
+                </button>
+              </div>
+
+              {isAddingCard && (
+                <div className="glass-panel" style={{ padding: '20px', borderRadius: '16px', marginBottom: '20px' }}>
+                  <h4 style={{ marginBottom: '15px' }}>Cadastrar Cartão</h4>
+                  <form onSubmit={handleAddCard} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <input type="text" placeholder="Nome do Cartão (ex: Nubank)" required value={newCardName} onChange={e => setNewCardName(e.target.value)} style={{ padding: '10px', borderRadius: '8px', background: 'var(--bg-primary)', border: 'none', color: 'white', outline: 'none' }} />
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Dia Fechamento</label>
+                        <input type="number" min="1" max="31" required value={newCardClosing} onChange={e => setNewCardClosing(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'var(--bg-primary)', border: 'none', color: 'white', outline: 'none' }} />
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Dia Vencimento</label>
+                        <input type="number" min="1" max="31" required value={newCardDue} onChange={e => setNewCardDue(e.target.value)} style={{ width: '100%', padding: '10px', borderRadius: '8px', background: 'var(--bg-primary)', border: 'none', color: 'white', outline: 'none' }} />
+                      </div>
+                    </div>
+                    <button type="submit" style={{ background: 'var(--accent-secondary)', color: 'white', padding: '10px', borderRadius: '8px', fontWeight: 'bold', marginTop: '5px' }}>Salvar Cartão</button>
+                  </form>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {creditCards.map((card) => {
+                  // Calcular o total de faturas deste cartão NO MÊS SELECIONADO
+                  const invoiceTotal = transactions
+                    .filter(t => t.paymentMethod === 'credit_card' && t.cardId === card.id && t.date.startsWith(selectedMonth))
+                    .reduce((acc, curr) => acc + curr.amount, 0);
+
+                  return (
+                    <div key={card.id} className="glass-panel" style={{ padding: '20px', borderRadius: '16px', background: 'linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(15, 23, 42, 0.8) 100%)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div className="flex-between" style={{ marginBottom: '15px' }}>
+                        <div className="flex-center" style={{ gap: '10px' }}>
+                          <CreditCard color="var(--accent-primary)" size={24} />
+                          <h4 style={{ fontSize: '1.1rem' }}>{card.name}</h4>
+                        </div>
+                      </div>
+                      <div className="flex-between" style={{ marginBottom: '15px' }}>
+                        <div>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Fechamento</p>
+                          <p style={{ fontWeight: '600' }}>Dia {card.closingDay}</p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Vencimento</p>
+                          <p style={{ fontWeight: '600' }}>Dia {card.dueDay}</p>
+                        </div>
+                      </div>
+                      <div style={{ paddingTop: '15px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '5px' }}>Fatura de {getMonthName(selectedMonth)}</p>
+                        <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--danger)' }}>{formatCurrency(invoiceTotal)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {creditCards.length === 0 && !isAddingCard && (
+                  <div style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '30px 0' }}>Nenhum cartão cadastrado.</div>
                 )}
               </div>
             </div>
@@ -349,6 +469,7 @@ function App() {
         <NavButton icon={<Home />} label="Início" isActive={activeTab === 'home'} onClick={() => setActiveTab('home')} />
         <NavButton icon={<PieChart />} label="Gráficos" isActive={activeTab === 'chart'} onClick={() => setActiveTab('chart')} />
         <NavButton icon={<History />} label="Histórico" isActive={activeTab === 'history'} onClick={() => setActiveTab('history')} />
+        <NavButton icon={<CreditCard />} label="Cartões" isActive={activeTab === 'cards'} onClick={() => setActiveTab('cards')} />
         <NavButton icon={<Settings />} label="Config" isActive={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
       </div>
 
@@ -359,6 +480,7 @@ function App() {
             onClose={() => setIsModalOpen(false)} 
             onAdd={addTransaction}
             onAddSubscription={addSubscription}
+            creditCards={creditCards}
           />
         )}
       </AnimatePresence>
