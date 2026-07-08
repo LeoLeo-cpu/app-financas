@@ -3,8 +3,8 @@ import { motion } from 'framer-motion';
 import { X } from 'lucide-react';
 
 const CATEGORIES = {
-  expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Assinaturas', 'Outros'],
-  income: ['Salário', 'Freelance', 'Investimentos', 'Presente', 'Outros']
+  expense: ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Educação', 'Assinaturas', 'Cartão de Crédito', 'Vestuário', 'Pets', 'Cuidados Pessoais', 'Outros'],
+  income: ['Salário', 'Freelance', 'Investimentos', 'Presente', 'Bônus', 'Vendas', 'Outros']
 };
 
 export default function TransactionModal({ onClose, onAdd, onAddSubscription }) {
