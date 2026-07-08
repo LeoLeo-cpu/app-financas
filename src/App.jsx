@@ -67,9 +67,6 @@ function App() {
     document.body.removeChild(link);
   };
 
-    document.body.removeChild(link);
-  };
-
   const handlePrevMonth = () => {
     const d = new Date(selectedMonth + "-01T00:00:00");
     d.setMonth(d.getMonth() - 1);
