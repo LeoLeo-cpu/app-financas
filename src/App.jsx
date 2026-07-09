@@ -1,29 +1,33 @@
 import React, { useState } from 'react';
-import { useTransactions } from './hooks/useTransactions';
-import { Plus, ArrowUpRight, ArrowDownRight, Wallet, History, PieChart, Home, Trash2, Settings, Download, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTransactions, migrateLegacyData } from './hooks/useTransactions';
+import { useAuth } from './hooks/useAuth';
+import { Plus, ArrowUpRight, ArrowDownRight, Wallet, History, PieChart, Home, Trash2, Settings, Download, CreditCard, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 import TransactionModal from './components/TransactionModal';
+import Login from './components/Login';
 
 const COLORS = ['#8B5CF6', '#10B981', '#F43F5E', '#F59E0B', '#3B82F6', '#EC4899', '#14B8A6'];
 
 function App() {
-  const { 
+  const { user, authLoading, authError, login, logout } = useAuth();
+
+  const {
     transactions,
     creditCards,
     loading,
-    addTransaction, 
+    addTransaction,
     deleteTransaction,
     addSubscription,
     approveSubscription,
     addCreditCard,
     getPendingSubscriptions,
-    getBalance, 
-    getIncome, 
+    getBalance,
+    getIncome,
     getExpense,
     getExpensesByCategory
-  } = useTransactions();
+  } = useTransactions(user?.uid);
 
   const [activeTab, setActiveTab] = useState('home');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,6 +39,18 @@ function App() {
   const [newCardClosing, setNewCardClosing] = useState(1);
   const [newCardDue, setNewCardDue] = useState(10);
   const [isAddingCard, setIsAddingCard] = useState(false);
+
+  const [migrationStatus, setMigrationStatus] = useState(null); // null | 'running' | { results } | { error }
+  const handleMigrateLegacyData = async () => {
+    setMigrationStatus('running');
+    try {
+      const results = await migrateLegacyData(user.uid);
+      setMigrationStatus({ results });
+    } catch (e) {
+      console.error('Erro na migração:', e);
+      setMigrationStatus({ error: e.message });
+    }
+  };
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -96,6 +112,14 @@ function App() {
     setIsAddingCard(false);
   };
 
+  if (authLoading) {
+    return <div className="flex-center" style={{ height: '100vh', color: 'var(--text-secondary)' }}>Carregando...</div>;
+  }
+
+  if (!user) {
+    return <Login onLogin={login} error={authError} />;
+  }
+
   if (loading) {
     return <div className="flex-center" style={{ height: '100vh', color: 'var(--text-secondary)' }}>Carregando dados da nuvem...</div>;
   }
@@ -117,7 +141,7 @@ function App() {
       >
         <div>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Bem-vindo de volta,</p>
-          <h2 style={{ fontSize: '1.5rem' }}>Leonardo 👋</h2>
+          <h2 style={{ fontSize: '1.5rem' }}>{user.displayName?.split(' ')[0] || 'Usuário'} 👋</h2>
         </div>
         <div className="flex-center" style={{ gap: '15px' }}>
           <div className="glass-panel flex-between" style={{ padding: '8px 12px', borderRadius: '20px', gap: '10px' }}>
@@ -125,8 +149,12 @@ function App() {
             <span style={{ fontSize: '0.85rem', fontWeight: '600', textTransform: 'capitalize' }}>{getMonthName(selectedMonth)}</span>
             <button onClick={handleNextMonth} style={{ background: 'transparent', color: 'var(--text-secondary)' }}><ChevronRight size={18} /></button>
           </div>
-          <div className="glass-panel flex-center" style={{ width: '45px', height: '45px', borderRadius: '50%' }}>
-            <Wallet color="var(--accent-primary)" />
+          <div className="glass-panel flex-center" style={{ width: '45px', height: '45px', borderRadius: '50%', overflow: 'hidden' }}>
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} referrerPolicy="no-referrer" />
+            ) : (
+              <Wallet color="var(--accent-primary)" />
+            )}
           </div>
         </div>
       </motion.div>
@@ -417,6 +445,52 @@ function App() {
                   >
                     <Download size={20} />
                     Baixar Planilha CSV
+                  </button>
+                </div>
+
+                <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: '20px' }}>
+                  <h4 style={{ marginBottom: '5px', fontSize: '1.05rem' }}>⚠️ Migração única de dados antigos</h4>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                    Dados criados antes do login (sem dono) ficam invisíveis agora. Clique uma vez para vincular esses dados antigos à sua conta. Remova este bloco depois de migrar.
+                  </p>
+                  <button
+                    onClick={handleMigrateLegacyData}
+                    disabled={migrationStatus === 'running'}
+                    style={{
+                      width: '100%', padding: '14px', borderRadius: '10px', fontSize: '1rem', fontWeight: '600',
+                      background: 'var(--accent-primary)', color: 'white',
+                      opacity: migrationStatus === 'running' ? 0.6 : 1
+                    }}
+                  >
+                    {migrationStatus === 'running' ? 'Migrando...' : 'Migrar dados antigos para minha conta'}
+                  </button>
+                  {migrationStatus?.results && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--success)', marginTop: '10px' }}>
+                      Migrado: {migrationStatus.results.transactions} transações, {migrationStatus.results.subscriptions} assinaturas, {migrationStatus.results.credit_cards} cartões.
+                    </p>
+                  )}
+                  {migrationStatus?.error && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '10px' }}>
+                      Erro: {migrationStatus.error}
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <h4 style={{ marginBottom: '5px', fontSize: '1.05rem' }}>Conta</h4>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
+                    Conectado como {user.email}
+                  </p>
+                  <button
+                    onClick={logout}
+                    style={{
+                      width: '100%', padding: '14px', borderRadius: '10px', fontSize: '1rem', fontWeight: '600',
+                      background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--danger-glow)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'
+                    }}
+                  >
+                    <LogOut size={20} />
+                    Sair da Conta
                   </button>
                 </div>
               </div>

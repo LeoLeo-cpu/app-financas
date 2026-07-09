@@ -1,8 +1,33 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, orderBy, where, getDocs, writeBatch } from 'firebase/firestore';
 
-export function useTransactions() {
+const LEGACY_COLLECTIONS = ['transactions', 'subscriptions', 'credit_cards'];
+
+// Ferramenta única de migração: carimba userId nos documentos criados antes do login existir.
+// Só funciona enquanto as regras do Firestore ainda permitem acesso sem dono (antes de publicar firestore.rules).
+export async function migrateLegacyData(uid) {
+  if (!uid) throw new Error('Usuário não autenticado');
+
+  const results = {};
+  for (const col of LEGACY_COLLECTIONS) {
+    const snapshot = await getDocs(collection(db, col));
+    const unowned = snapshot.docs.filter(d => !d.data().userId);
+
+    let migrated = 0;
+    while (unowned.length > 0) {
+      const chunk = unowned.splice(0, 400); // limite de segurança abaixo do máx. de 500 por batch
+      const batch = writeBatch(db);
+      chunk.forEach(d => batch.update(doc(db, col, d.id), { userId: uid }));
+      await batch.commit();
+      migrated += chunk.length;
+    }
+    results[col] = migrated;
+  }
+  return results;
+}
+
+export function useTransactions(uid) {
   const [transactions, setTransactions] = useState([]);
   const [subscriptions, setSubscriptions] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
@@ -10,7 +35,9 @@ export function useTransactions() {
 
   // Ouve as transações em tempo real
   useEffect(() => {
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'));
+    if (!uid) return;
+
+    const q = query(collection(db, 'transactions'), where('userId', '==', uid), orderBy('date', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -25,11 +52,13 @@ export function useTransactions() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [uid]);
 
   // Ouve as assinaturas recorrentes
   useEffect(() => {
-    const q = query(collection(db, 'subscriptions'));
+    if (!uid) return;
+
+    const q = query(collection(db, 'subscriptions'), where('userId', '==', uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -41,11 +70,13 @@ export function useTransactions() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [uid]);
 
   // Ouve os cartões de crédito
   useEffect(() => {
-    const q = query(collection(db, 'credit_cards'));
+    if (!uid) return;
+
+    const q = query(collection(db, 'credit_cards'), where('userId', '==', uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -57,9 +88,10 @@ export function useTransactions() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [uid]);
 
   const addTransaction = async (transaction) => {
+    if (!uid) return;
     try {
       if (transaction.creditCardId && transaction.type === 'expense') {
         const card = creditCards.find(c => c.id === transaction.creditCardId);
@@ -67,12 +99,12 @@ export function useTransactions() {
 
         const installments = parseInt(transaction.installments) || 1;
         const amountPerInstallment = transaction.amount / installments;
-        
+
         const now = new Date();
         const purchaseDay = now.getDate();
-        
+
         let startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        
+
         if (purchaseDay >= card.closingDay) {
            startMonth.setMonth(startMonth.getMonth() + 1);
         }
@@ -80,8 +112,9 @@ export function useTransactions() {
         for (let i = 0; i < installments; i++) {
            const invoiceDate = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, card.dueDay);
            invoiceDate.setHours(12, 0, 0, 0); // Evitar problemas de fuso
-           
+
            await addDoc(collection(db, 'transactions'), {
+              userId: uid,
               type: 'expense',
               amount: amountPerInstallment,
               category: transaction.category,
@@ -95,6 +128,7 @@ export function useTransactions() {
       } else {
         await addDoc(collection(db, 'transactions'), {
           ...transaction,
+          userId: uid,
           date: new Date().toISOString()
         });
       }
@@ -112,9 +146,11 @@ export function useTransactions() {
   };
 
   const addSubscription = async (sub) => {
+    if (!uid) return;
     try {
       await addDoc(collection(db, 'subscriptions'), {
         ...sub,
+        userId: uid,
         createdAt: new Date().toISOString(),
         lastPaidMonth: null // formato "YYYY-MM"
       });
@@ -124,9 +160,11 @@ export function useTransactions() {
   };
 
   const addCreditCard = async (cardData) => {
+    if (!uid) return;
     try {
       await addDoc(collection(db, 'credit_cards'), {
         ...cardData,
+        userId: uid,
         createdAt: new Date().toISOString()
       });
     } catch (e) {
@@ -136,16 +174,18 @@ export function useTransactions() {
 
   // Função para aprovar uma assinatura e transformá-la em transação
   const approveSubscription = async (subId, subData) => {
+    if (!uid) return;
     try {
       // 1. Adiciona a transação
       await addDoc(collection(db, 'transactions'), {
+        userId: uid,
         type: 'expense',
         amount: subData.amount,
         category: subData.category,
         description: `(Assinatura) ${subData.description}`,
         date: new Date().toISOString()
       });
-      
+
       // 2. Atualiza a assinatura dizendo que este mês já foi pago
       const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
       await updateDoc(doc(db, 'subscriptions', subId), {

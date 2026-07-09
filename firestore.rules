@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Apenas o dono autenticado (por e-mail) pode ler/escrever seus próprios documentos.
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == 'leoaug.br@gmail.com';
+    }
+
+    function ownsDoc() {
+      return isOwner() && resource.data.userId == request.auth.uid;
+    }
+
+    function ownsIncomingDoc() {
+      return isOwner() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /transactions/{docId} {
+      allow read, delete, update: if ownsDoc();
+      allow create: if ownsIncomingDoc();
+    }
+
+    match /subscriptions/{docId} {
+      allow read, delete, update: if ownsDoc();
+      allow create: if ownsIncomingDoc();
+    }
+
+    match /credit_cards/{docId} {
+      allow read, delete, update: if ownsDoc();
+      allow create: if ownsIncomingDoc();
+    }
+  }
+}
