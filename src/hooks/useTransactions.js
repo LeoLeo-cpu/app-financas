@@ -1,31 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, orderBy, where, getDocs, writeBatch } from 'firebase/firestore';
-
-const LEGACY_COLLECTIONS = ['transactions', 'subscriptions', 'credit_cards'];
-
-// Ferramenta única de migração: carimba userId nos documentos criados antes do login existir.
-// Só funciona enquanto as regras do Firestore ainda permitem acesso sem dono (antes de publicar firestore.rules).
-export async function migrateLegacyData(uid) {
-  if (!uid) throw new Error('Usuário não autenticado');
-
-  const results = {};
-  for (const col of LEGACY_COLLECTIONS) {
-    const snapshot = await getDocs(collection(db, col));
-    const unowned = snapshot.docs.filter(d => !d.data().userId);
-
-    let migrated = 0;
-    while (unowned.length > 0) {
-      const chunk = unowned.splice(0, 400); // limite de segurança abaixo do máx. de 500 por batch
-      const batch = writeBatch(db);
-      chunk.forEach(d => batch.update(doc(db, col, d.id), { userId: uid }));
-      await batch.commit();
-      migrated += chunk.length;
-    }
-    results[col] = migrated;
-  }
-  return results;
-}
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, query, orderBy, where } from 'firebase/firestore';
 
 export function useTransactions(uid) {
   const [transactions, setTransactions] = useState([]);

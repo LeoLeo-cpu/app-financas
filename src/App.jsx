@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useTransactions, migrateLegacyData } from './hooks/useTransactions';
+import { useTransactions } from './hooks/useTransactions';
 import { useAuth } from './hooks/useAuth';
 import { Plus, ArrowUpRight, ArrowDownRight, Wallet, History, PieChart, Home, Trash2, Settings, Download, CreditCard, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,18 +39,6 @@ function App() {
   const [newCardClosing, setNewCardClosing] = useState(1);
   const [newCardDue, setNewCardDue] = useState(10);
   const [isAddingCard, setIsAddingCard] = useState(false);
-
-  const [migrationStatus, setMigrationStatus] = useState(null); // null | 'running' | { results } | { error }
-  const handleMigrateLegacyData = async () => {
-    setMigrationStatus('running');
-    try {
-      const results = await migrateLegacyData(user.uid);
-      setMigrationStatus({ results });
-    } catch (e) {
-      console.error('Erro na migração:', e);
-      setMigrationStatus({ error: e.message });
-    }
-  };
 
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -446,34 +434,6 @@ function App() {
                     <Download size={20} />
                     Baixar Planilha CSV
                   </button>
-                </div>
-
-                <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.08)', marginBottom: '20px' }}>
-                  <h4 style={{ marginBottom: '5px', fontSize: '1.05rem' }}>⚠️ Migração única de dados antigos</h4>
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                    Dados criados antes do login (sem dono) ficam invisíveis agora. Clique uma vez para vincular esses dados antigos à sua conta. Remova este bloco depois de migrar.
-                  </p>
-                  <button
-                    onClick={handleMigrateLegacyData}
-                    disabled={migrationStatus === 'running'}
-                    style={{
-                      width: '100%', padding: '14px', borderRadius: '10px', fontSize: '1rem', fontWeight: '600',
-                      background: 'var(--accent-primary)', color: 'white',
-                      opacity: migrationStatus === 'running' ? 0.6 : 1
-                    }}
-                  >
-                    {migrationStatus === 'running' ? 'Migrando...' : 'Migrar dados antigos para minha conta'}
-                  </button>
-                  {migrationStatus?.results && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--success)', marginTop: '10px' }}>
-                      Migrado: {migrationStatus.results.transactions} transações, {migrationStatus.results.subscriptions} assinaturas, {migrationStatus.results.credit_cards} cartões.
-                    </p>
-                  )}
-                  {migrationStatus?.error && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--danger)', marginTop: '10px' }}>
-                      Erro: {migrationStatus.error}
-                    </p>
-                  )}
                 </div>
 
                 <div style={{ paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
