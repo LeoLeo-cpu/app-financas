@@ -83,6 +83,13 @@ function App() {
     setSelectedMonth(d.toISOString().slice(0, 7));
   };
 
+  const handleDeleteTransaction = (t) => {
+    const label = t.description || t.category;
+    if (window.confirm(`Excluir "${label}" (${formatCurrency(t.amount)})? Essa ação não pode ser desfeita.`)) {
+      deleteTransaction(t.id);
+    }
+  };
+
   const getMonthName = (isoMonth) => {
     const d = new Date(isoMonth + "-01T00:00:00");
     return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -329,7 +336,7 @@ function App() {
                       <p style={{ fontWeight: '600', color: t.type === 'income' ? 'var(--success)' : 'var(--danger)' }}>
                         {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
                       </p>
-                      <button onClick={() => deleteTransaction(t.id)} style={{ background: 'transparent', color: 'var(--danger)' }}>
+                      <button onClick={() => handleDeleteTransaction(t)} style={{ background: 'transparent', color: 'var(--danger)' }}>
                         <Trash2 size={18} />
                       </button>
                     </div>
